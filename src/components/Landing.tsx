@@ -1,9 +1,12 @@
+import React from 'react';
 import { useAuth } from '../contexts/AuthContext.tsx';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Heart, ShieldCheck, PieChart, Users } from 'lucide-react';
+import AuthModal from './AuthModal.tsx';
 
 export default function Landing() {
-  const { login, user } = useAuth();
+  const { user, setAuthModal } = useAuth();
 
   return (
     <div className="flex flex-col items-center">
@@ -28,22 +31,35 @@ export default function Landing() {
           <p className="text-xl text-gray-600 max-w-xl">
             BridgeOfHope ensures your donations reach the right hands through a strict verification system and real-time impact tracking.
           </p>
-          <div className="flex gap-4 pt-4">
+          <div className="flex flex-wrap gap-4 pt-4">
             {user ? (
-              <a href="/dashboard" className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+              <Link to="/dashboard" className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
                 Go to Dashboard
-              </a>
+              </Link>
             ) : (
-              <button 
-                onClick={login}
-                className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-              >
-                Start Donating
-              </button>
+              <>
+                <button 
+                  onClick={() => setAuthModal({ isOpen: true, mode: 'login' })}
+                  className="bg-white border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-50 transition-all"
+                >
+                  Login
+                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setAuthModal({ isOpen: true, mode: 'signup', role: 'Donor' })}
+                    className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center gap-2"
+                  >
+                    <Heart size={20} /> I want to Donate
+                  </button>
+                  <button 
+                    onClick={() => setAuthModal({ isOpen: true, mode: 'signup', role: 'Orphanage' })}
+                    className="bg-gray-900 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-black transition-all shadow-lg"
+                  >
+                    I am an NGO
+                  </button>
+                </div>
+              </>
             )}
-            <button className="bg-white border-2 border-gray-200 text-gray-700 px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-50 transition-all">
-              Learn More
-            </button>
           </div>
         </div>
         <div className="flex-1 relative">
@@ -100,3 +116,4 @@ export default function Landing() {
     </div>
   );
 }
+

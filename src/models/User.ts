@@ -11,6 +11,9 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  displayName: {
+    type: String,
+  },
   role: {
     type: String,
     enum: ['Admin', 'Donor', 'Orphanage', 'OldAgeHome'],
@@ -23,7 +26,24 @@ const userSchema = new mongoose.Schema({
   verificationStatus: {
     type: String,
     enum: ['Pending', 'Approved', 'Rejected'],
-    default: 'Pending',
+  },
+  ngoDetails: {
+    officialName: String,
+    location: String,
+    city: String,
+    pincode: String,
+    contactNumber: String,
+    profileImageUrl: String,
+  },
+  donorDetails: {
+    shopName: String,
+    location: String,
+    pincode: String,
+    contactNumber: String,
+    shopImageUrl: String,
+  },
+  contactNumber: {
+    type: String,
   },
   uploadedDocuments: [
     {
