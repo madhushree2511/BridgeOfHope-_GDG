@@ -84,18 +84,6 @@ export default function Landing() {
                    <Heart size={140} className="text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.8)] opacity-90 relative z-10 scale-90 group-hover:scale-100 transition-transform duration-500" />
                 </div>
              </div>
-             
-             <div className="absolute bottom-8 left-8 right-8">
-                <div className="bg-white/10 backdrop-blur-md p-6 rounded-[2rem] border border-white/20 shadow-2xl translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                   <div className="flex items-center gap-3 mb-2">
-                      <div className="bg-blue-600 p-2 rounded-lg">
-                         <Heart className="text-white fill-white" size={16} />
-                      </div>
-                      <span className="text-xs font-black uppercase tracking-[0.2em] text-white">Trust Ecosystem</span>
-                   </div>
-                   <p className="text-lg font-black text-white leading-tight">Empowering {user ? 'Your' : 'Local'} Communities Through Transparency.</p>
-                </div>
-             </div>
           </motion.div>
         </div>
       </section>

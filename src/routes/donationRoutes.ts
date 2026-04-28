@@ -1,7 +1,14 @@
 import express from 'express';
 import { Donation } from '../models/Donation.ts';
 import { User } from '../models/User.ts';
-import { verifyToken, AuthRequest } from '../middleware/auth.ts';
+import { verifyToken } from '../middleware/auth.ts';
+import admin from 'firebase-admin';
+import type { Request } from 'express';
+
+interface AuthRequest extends Request {
+  user?: admin.auth.DecodedIdToken;
+}
+
 
 const router = express.Router();
 
@@ -55,12 +62,35 @@ router.get('/my-donations', verifyToken, async (req: AuthRequest, res: any) => {
 // Get all available donations (For NGOs)
 router.get('/available', verifyToken, async (req: AuthRequest, res: any) => {
   try {
-    const donations = await Donation.find({ status: 'Pending' })
+    const user = await User.findOne({ firebaseUid: req.user!.uid });
+    const query: any = { status: 'Pending' };
+    
+    if (user && user.ignoredDonations && user.ignoredDonations.length > 0) {
+      query._id = { $nin: user.ignoredDonations };
+    }
+
+    const donations = await Donation.find(query)
       .populate('donor', 'displayName email')
       .sort({ createdAt: -1 });
     res.json(donations);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark a donation as ignored (Not Interested)
+router.post('/:id/ignore', verifyToken, async (req: AuthRequest, res: any) => {
+  try {
+    const user = await User.findOne({ firebaseUid: req.user!.uid });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.ignoredDonations.some(id => id.toString() === req.params.id)) {
+      user.ignoredDonations.push(req.params.id as any);
+      await user.save();
+    }
+    res.json({ message: 'Donation ignored' });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -141,6 +171,68 @@ router.post('/:id/report', verifyToken, async (req: AuthRequest, res: any) => {
 
     await donation.save();
     res.json(donation);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Update a specific item's image in a donation
+router.patch('/:id/items/:itemIndex/image', verifyToken, async (req: AuthRequest, res: any) => {
+  try {
+    const { imageUrl } = req.body;
+    const donation = await Donation.findById(req.params.id);
+    if (!donation) return res.status(404).json({ error: 'Donation not found' });
+    
+    // Check if user is either the donor or the assigned NGO
+    const user = await User.findOne({ firebaseUid: req.user!.uid });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const isDonor = donation.donor.toString() === user._id.toString();
+    const isNGO = donation.ngo?.toString() === user._id.toString();
+
+    if (!isDonor && !isNGO) {
+      return res.status(403).json({ error: 'Permission denied. Only donor or assigned NGO can update images.' });
+    }
+
+    const itemIndex = parseInt(req.params.itemIndex);
+    if (donation.items[itemIndex]) {
+      donation.items[itemIndex].imageUrl = imageUrl;
+      await donation.save();
+      res.json(donation);
+    } else {
+      res.status(404).json({ error: 'Item not found' });
+    }
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Unclaim a donation
+router.patch('/:id/unclaim', verifyToken, async (req: AuthRequest, res: any) => {
+  try {
+    const donation = await Donation.findById(req.params.id);
+    if (!donation) return res.status(404).json({ error: 'Donation not found' });
+    
+    // Find the NGO's MongoDB _id
+    const user = await User.findOne({ firebaseUid: req.user!.uid });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check if the donation is actually claimed by this NGO
+    if (!donation.ngo || donation.ngo.toString() !== user._id.toString()) {
+      return res.status(403).json({ error: 'Only the assigned NGO can unclaim this donation' });
+    }
+
+    // Don't allow unclaiming if it's already finished
+    if (donation.status === 'Distributed') {
+      return res.status(400).json({ error: 'Cannot unclaim a donation that has already been processed' });
+    }
+
+    // Reset NGO and status
+    donation.ngo = undefined;
+    donation.status = 'Pending';
+    await donation.save();
+    
+    res.json({ message: 'Donation released for others' });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

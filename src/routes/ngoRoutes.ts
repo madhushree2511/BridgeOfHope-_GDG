@@ -2,7 +2,14 @@ import express from 'express';
 import { NGORequirement } from '../models/NGORequirement.ts';
 import { User } from '../models/User.ts';
 import { Donation } from '../models/Donation.ts';
-import { verifyToken, AuthRequest } from '../middleware/auth.ts';
+import { verifyToken } from '../middleware/auth.ts';
+import admin from 'firebase-admin';
+import type { Request } from 'express';
+
+interface AuthRequest extends Request {
+  user?: admin.auth.DecodedIdToken;
+}
+
 
 const router = express.Router();
 

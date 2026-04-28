@@ -157,7 +157,7 @@ export default function DonorDashboard() {
   const handleItemImageUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const imageFile = e.target.files[0];
-      console.log(`[ProductImage] Starting upload for item ${index}: ${imageFile.name}`);
+      console.log(`[ProductImage] Attempting upload for item ${index}: ${imageFile.name} (${imageFile.size} bytes)`);
       setItemUploading(prev => ({ ...prev, [index]: true }));
       try {
         const token = await getIdToken();
@@ -166,17 +166,23 @@ export default function DonorDashboard() {
 
         const response = await axios.post('/api/users/upload-product-image', formData, {
           headers: { 
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
           }
         });
         
-        console.log(`[ProductImage] Upload success for item ${index}. URL:`, response.data.url);
-        const newItems = [...donationForm.items];
-        newItems[index].imageUrl = response.data.url;
-        setDonationForm({ ...donationForm, items: newItems });
+        if (response.data?.url) {
+          console.log(`[ProductImage] Upload success for item ${index}:`, response.data.url);
+          const newItems = [...donationForm.items];
+          newItems[index].imageUrl = response.data.url;
+          setDonationForm({ ...donationForm, items: newItems });
+        } else {
+          throw new Error('Server returned success but no URL found in response');
+        }
       } catch (err: any) {
-        console.error(`[ProductImage] Upload failed for item ${index}:`, err);
-        alert('Image upload failed: ' + (err.response?.data?.error || err.message));
+        console.error(`[ProductImage] Upload CRITICAL FAIL for item ${index}:`, err);
+        const errorMsg = err.response?.data?.details || err.response?.data?.error || err.message;
+        alert(`Photo Upload Failed:\n\n${errorMsg}\n\nTip: Ensure Cloudinary credentials are set in Settings.`);
       } finally {
         setItemUploading(prev => ({ ...prev, [index]: false }));
       }
@@ -396,11 +402,25 @@ export default function DonorDashboard() {
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-amber-100 flex items-center justify-center">
                   <Clock className="text-amber-600" size={32} />
                 </div>
-                {userData.donorDetails?.shopImageUrl && (
-                  <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
-                    <img src={userData.donorDetails.shopImageUrl} alt="Shop Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <div className="relative group">
+                  <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 flex items-center justify-center">
+                    {userData.donorDetails?.shopImageUrl ? (
+                      <img 
+                        src={userData.donorDetails.shopImageUrl} 
+                        alt="Shop Profile" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                           (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.donorDetails?.shopName || 'S')}&background=random&size=128`;
+                        }}
+                      />
+                    ) : (
+                      <div className="text-gray-300 font-black text-4xl">
+                        {(userData.donorDetails?.shopName || 'S').charAt(0)}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
               <div className="text-left">
                 <h2 className="text-2xl font-bold text-amber-900 mb-2">Verification Under Review</h2>
@@ -421,11 +441,25 @@ export default function DonorDashboard() {
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-green-100 flex items-center justify-center">
                   <ShieldCheck className="text-green-600" size={32} />
                 </div>
-                {userData.donorDetails?.shopImageUrl && (
-                  <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
-                    <img src={userData.donorDetails.shopImageUrl} alt="Shop Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <div className="relative group">
+                  <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 flex items-center justify-center">
+                    {userData.donorDetails?.shopImageUrl ? (
+                      <img 
+                        src={`${userData.donorDetails.shopImageUrl}?t=${Date.now()}`} 
+                        alt="Shop Profile" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                           (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.donorDetails?.shopName || 'Shop')}&background=random&size=128`;
+                        }}
+                      />
+                    ) : (
+                      <div className="text-gray-300 font-black text-4xl">
+                        {(userData.donorDetails?.shopName || 'S').charAt(0)}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
               <div className="flex-1 text-left">
                 <h2 className="text-2xl font-bold text-green-900 mb-2">Verified Partner: {userData.donorDetails?.shopName}</h2>
@@ -559,7 +593,7 @@ export default function DonorDashboard() {
                               <div className="relative w-full md:w-32 h-32 bg-gray-50 rounded-xl border-2 border-dashed border-gray-100 flex items-center justify-center overflow-hidden shrink-0 group">
                                  {item.imageUrl ? (
                                    <>
-                                     <img src={item.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                     <img src={`${item.imageUrl}?t=${Date.now()}`} alt="Preview" className="w-full h-full object-cover" />
                                      <button 
                                       onClick={() => handleItemChange(index, 'imageUrl', '')}
                                       className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity cursor-pointer"
@@ -751,11 +785,32 @@ export default function DonorDashboard() {
                            <Clock size={24} />}
                         </div>
                         <div>
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <div className="flex flex-wrap items-center gap-4 mb-3">
                             {donation.items.map((it: any, i: number) => (
-                              <span key={i} className="text-sm font-black text-gray-800">
-                                {it.name} ({it.quantity}){i < donation.items.length - 1 ? ',' : ''}
-                              </span>
+                              <div key={i} className="flex items-center gap-3 bg-gray-50 pr-4 rounded-xl border border-gray-100 group/item-fix overflow-hidden">
+                                <div className="relative">
+                                  {it.imageUrl ? (
+                                    <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-gray-200">
+                                      <img 
+                                        src={`${it.imageUrl}?t=${Date.now()}`} 
+                                        alt={it.name} 
+                                        className="w-full h-full object-cover" 
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(it.name || 'P')}&background=random&size=48`;
+                                        }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center shrink-0">
+                                       <ImageIcon className="text-gray-400" size={16} />
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-sm font-black text-gray-800">
+                                  {it.name} ({it.quantity})
+                                </span>
+                              </div>
                             ))}
                           </div>
                           <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">

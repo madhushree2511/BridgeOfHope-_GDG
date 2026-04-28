@@ -349,6 +349,10 @@ const approveUser = async (userId: string, action: 'Approved' | 'Rejected') => {
                                  alt={user.role === 'Donor' ? 'Shop' : 'NGO'} 
                                  className="w-full h-full object-cover" 
                                  referrerPolicy="no-referrer"
+                                 onError={(e) => {
+                                   const name = user.role === 'Donor' ? user.donorDetails?.shopName : user.ngoDetails?.officialName;
+                                   (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=random&size=128`;
+                                 }}
                                />
                                <div 
                                   onClick={() => viewDoc(user.role === 'Donor' ? user.donorDetails.shopImageUrl : user.ngoDetails.profileImageUrl)}

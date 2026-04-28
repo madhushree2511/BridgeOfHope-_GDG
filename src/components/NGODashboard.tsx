@@ -34,6 +34,7 @@ export default function NGODashboard() {
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [reqForm, setReqForm] = useState({ title: '', description: '', urgency: 'High', categoriesNeeded: [] as string[], documentUrl: '' });
 
@@ -41,6 +42,46 @@ export default function NGODashboard() {
     setIsRefreshing(true);
     await fetchData();
     setTimeout(() => setIsRefreshing(false), 1000);
+  };
+
+  const handleUnclaim = async (donationId: string) => {
+    if (!confirm('Are you sure you want to unclaim this donation? It will be released for other NGOs.')) return;
+    
+    setLoading(true);
+    try {
+      const token = await getIdToken();
+      await axios.patch(`/api/donations/${donationId}/unclaim`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert('Donation released successfully.');
+      fetchData();
+    } catch (err: any) {
+      console.error('Unclaim failed:', err);
+      alert('Failed to release donation: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleIgnore = async (donationId: string) => {
+    if (!confirm('Are you sure you don\'t want to claim this? It will be hidden from your list.')) return;
+    
+    // Optimistic Update: Remove from list immediately
+    setAvailableDonations((prev: any) => prev.filter((d: any) => d._id !== donationId));
+    
+    try {
+      const token = await getIdToken();
+      await axios.post(`/api/donations/${donationId}/ignore`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      // Silent refresh to ensure sync
+      const donationsRes = await axios.get('/api/donations/available', { headers: { Authorization: `Bearer ${token}` } });
+      setAvailableDonations(Array.from(new Map(donationsRes.data.map((d: any) => [d._id, d])).values()));
+    } catch (err: any) {
+      console.error('Ignore failed:', err);
+      alert('Failed to ignore donation');
+      fetchData(); // Rollback on error
+    }
   };
 
   useEffect(() => {
@@ -226,7 +267,7 @@ export default function NGODashboard() {
       if (usageFile) {
         const formData = new FormData();
         formData.append('image', usageFile);
-        const uploadRes = await axios.post('/api/users/upload', formData, {
+        const uploadRes = await axios.post('/api/users/upload-product-image', formData, {
           headers: { 
             Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
@@ -396,26 +437,36 @@ export default function NGODashboard() {
                <ShieldCheck size={120} />
             </div>
             <div className="flex flex-col md:flex-row items-start gap-8">
-              {registeredUser.ngoDetails?.profileImageUrl ? (
-                <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl shrink-0">
-                  <img src={registeredUser.ngoDetails.profileImageUrl} alt="NGO Logo" className="w-full h-full object-cover" />
+                <div className="relative group/logo">
+                  <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl shrink-0 bg-white flex items-center justify-center">
+                    {registeredUser.ngoDetails?.profileImageUrl ? (
+                      <img 
+                        src={`${registeredUser.ngoDetails.profileImageUrl}?t=${Date.now()}`} 
+                        alt="NGO Logo" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(registeredUser.ngoDetails?.officialName || 'N')}&background=random&size=128`;
+                        }}
+                      />
+                    ) : (
+                      <div className="text-green-600 font-black text-4xl">
+                         {(registeredUser.ngoDetails?.officialName || 'N').charAt(0)}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div className="w-32 h-32 rounded-[2.5rem] bg-white border-2 border-dashed border-gray-200 flex items-center justify-center shrink-0">
-                   <ShieldCheck size={48} className="text-green-600" />
+                <div className="flex-1 text-left">
+                  <h2 className="text-3xl font-black text-green-900 mb-2">{registeredUser.ngoDetails?.officialName}</h2>
+                  <p className="text-green-800 text-lg font-medium leading-relaxed mb-4 opacity-80">
+                    You are a verified institution. Your claims are prioritized for urgent relief.
+                  </p>
+                  
+                  <div className="flex flex-wrap items-center gap-4 mb-6">
+                    <div className="bg-white px-4 py-2 rounded-xl text-xs font-black text-green-600 shadow-sm border border-green-100">Verified Location</div>
+                    <div className="bg-white px-4 py-2 rounded-xl text-xs font-black text-green-600 shadow-sm border border-green-100 uppercase tracking-widest">{registeredUser.ngoDetails?.city || 'Local'}</div>
+                  </div>
                 </div>
-              )}
-              <div className="flex-1 text-left">
-                <h2 className="text-3xl font-black text-green-900 mb-2">{registeredUser.ngoDetails?.officialName}</h2>
-                <p className="text-green-800 text-lg font-medium leading-relaxed mb-6 opacity-80">
-                  You are a verified institution. Your claims are prioritized for urgent relief.
-                </p>
-                
-                <div className="flex items-center gap-4">
-                   <div className="bg-white px-4 py-2 rounded-xl text-xs font-black text-green-600 shadow-sm border border-green-100">Verified Location</div>
-                   <div className="bg-white px-4 py-2 rounded-xl text-xs font-black text-green-600 shadow-sm border border-green-100 uppercase tracking-widest">{registeredUser.ngoDetails?.city || 'Local'}</div>
-                </div>
-              </div>
             </div>
           </motion.div>
         )}
@@ -565,11 +616,19 @@ export default function NGODashboard() {
                   <div className="bg-amber-500 p-8 rounded-[2.5rem] shadow-2xl shadow-amber-200 text-white flex items-center justify-center">
                     <Clock size={48} />
                   </div>
-                  {registeredUser.ngoDetails?.profileImageUrl && (
-                    <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-xl">
-                      <img src={registeredUser.ngoDetails.profileImageUrl} alt="NGO Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className="relative group/logo">
+                    <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center">
+                      <img 
+                        src={`${registeredUser.ngoDetails?.profileImageUrl}?t=${Date.now()}`} 
+                        alt="NGO Profile" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(registeredUser.ngoDetails?.officialName || 'N G O')}&background=random&size=128`;
+                        }}
+                      />
                     </div>
-                  )}
+                  </div>
                 </div>
                 <div className="flex-1 text-left">
                   <h2 className="text-3xl font-black text-amber-900 mb-2">Review in Progress: {registeredUser.ngoDetails?.officialName}</h2>
@@ -610,75 +669,104 @@ export default function NGODashboard() {
                  <p className="text-gray-400 font-medium italic">No pending donations at the moment. Check back soon!</p>
               </div>
             ) : (
-              availableDonations.map((donation: any) => (
-                <motion.div 
-                  key={donation._id}
-                  whileHover={{ y: -4 }}
-                  className="bg-white border-2 border-slate-50 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/50 flex flex-col md:flex-row justify-between items-center gap-8 group transition-all hover:border-blue-100"
-                >
-                  <div className="flex items-center gap-8 flex-1 text-left">
-                    {donation.items.some((it: any) => it.imageUrl) ? (
-                      <div className="w-28 h-28 rounded-[2rem] overflow-hidden bg-gray-50 border-2 border-white shrink-0 shadow-2xl">
-                         <img 
-                          src={donation.items.find((it: any) => it.imageUrl)?.imageUrl} 
-                          alt="Donation Preview" 
-                          className="w-full h-full object-cover transition-transform group-hover:scale-110"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                            // Could show an icon here if needed
-                          }}
-                         />
-                      </div>
-                    ) : (
-                      <div className="w-24 h-24 rounded-2xl bg-gray-50 border border-dashed border-gray-200 shrink-0 flex items-center justify-center text-gray-300">
-                         <ImageIcon size={32} />
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {donation.items.map((it: any, i: number) => (
-                          <div key={i} className="flex flex-col gap-1 items-start">
-                            <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold border border-gray-200/50">
-                              {it.name} ({it.quantity})
-                            </span>
-                            {(it.mrpPrice > 0 || it.wishingPrice > 0) && (
-                              <div className="flex gap-2 text-[10px] font-black ml-1">
-                                {it.mrpPrice > 0 && <span className="text-gray-400 line-through">₹{it.mrpPrice}</span>}
-                                {it.wishingPrice > 0 && <span className="text-blue-600">Asking: ₹{it.wishingPrice}</span>}
-                                {it.wishingPrice === 0 && it.mrpPrice > 0 && <span className="text-green-600 uppercase">Free</span>}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-sm font-medium text-gray-500 flex items-center gap-2">
-                        Donor: <span className="text-gray-900 font-bold">{donation.donor?.displayName || 'Unknown Donor'}</span> • 
-                        Location: <span className="text-gray-900 font-bold">{donation.pickupAddress?.city || 'N/A'}</span>
-                        {donation.contactNumber && (
-                          <span className="ml-2 font-black text-gray-900">({donation.contactNumber})</span>
-                        )}
-                        {donation.pickupAddress?.street && (
-                           <a 
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${donation.pickupAddress.street}, ${donation.pickupAddress.city}, ${donation.pickupAddress.state}, ${donation.pickupAddress.zipCode}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="ml-2 text-blue-600 hover:underline flex items-center gap-1 font-black text-xs"
-                           >
-                             View Map
-                           </a>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => claimDonation(donation._id)}
-                    disabled={claiming === donation._id}
-                    className="whitespace-nowrap bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
+              [...availableDonations, ...myClaims.filter((c: any) => c.status === 'Accepted')].map((donation: any) => {
+                const isClaimedByMe = donation.ngo && (
+                  (typeof donation.ngo === 'string' && donation.ngo === registeredUser?._id) || 
+                  (donation.ngo._id && donation.ngo._id === registeredUser?._id)
+                );
+
+                return (
+                  <motion.div 
+                    key={donation._id}
+                    whileHover={{ y: -4 }}
+                    className={`border-2 rounded-[2.5rem] p-8 shadow-xl flex flex-col md:flex-row justify-between items-center gap-8 group transition-all ${isClaimedByMe ? 'bg-blue-50/30 border-blue-100' : 'bg-white border-slate-50 shadow-slate-100/50 hover:border-blue-100'}`}
                   >
-                    {claiming === donation._id ? 'Claiming...' : 'Claim Donation'}
-                  </button>
-                </motion.div>
-              ))
+                    <div className="flex items-center gap-8 flex-1 text-left">
+                      {donation.items.some((it: any) => it.imageUrl) ? (
+                        <div className="w-28 h-28 rounded-[2rem] overflow-hidden bg-gray-50 border-2 border-white shrink-0 shadow-2xl">
+                           <img 
+                            src={`${donation.items.find((it: any) => it.imageUrl)?.imageUrl}?t=${Date.now()}`} 
+                            alt="Donation Preview" 
+                            className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(donation.items[0]?.name || 'P')}&background=random&size=128`;
+                            }}
+                           />
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 rounded-2xl bg-gray-50 border border-dashed border-gray-200 shrink-0 flex items-center justify-center text-gray-300">
+                           <ImageIcon size={32} />
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {donation.items.map((it: any, i: number) => (
+                            <div key={i} className="flex flex-col gap-1 items-start">
+                              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold border border-gray-200/50">
+                                {it.name} ({it.quantity})
+                              </span>
+                              {(it.mrpPrice > 0 || it.wishingPrice > 0) && (
+                                <div className="flex gap-2 text-[10px] font-black ml-1">
+                                  {it.mrpPrice > 0 && <span className="text-gray-400 line-through">₹{it.mrpPrice}</span>}
+                                  {it.wishingPrice > 0 && <span className="text-blue-600">Asking: ₹{it.wishingPrice}</span>}
+                                  {it.wishingPrice === 0 && it.mrpPrice > 0 && <span className="text-green-600 uppercase">Free</span>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                          Donor: <span className="text-gray-900 font-bold">{donation.donor?.displayName || 'Unknown Donor'}</span> • 
+                          Location: <span className="text-gray-900 font-bold">{donation.pickupAddress?.city || 'N/A'}</span>
+                          {donation.contactNumber && (
+                            <span className="ml-2 font-black text-gray-900">({donation.contactNumber})</span>
+                          )}
+                          {donation.pickupAddress?.street && (
+                             <a 
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${donation.pickupAddress.street}, ${donation.pickupAddress.city}, ${donation.pickupAddress.state}, ${donation.pickupAddress.zipCode}`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-2 text-blue-600 hover:underline flex items-center gap-1 font-black text-xs"
+                             >
+                               View Map
+                             </a>
+                          )}
+                        </p>
+                        {isClaimedByMe && (
+                           <p className="text-[10px] font-black text-blue-600 uppercase mt-2">Currently Claimed by You</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {!isClaimedByMe ? (
+                        <>
+                          <button 
+                            onClick={() => claimDonation(donation._id)}
+                            disabled={claiming === donation._id}
+                            className="whitespace-nowrap bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
+                          >
+                            {claiming === donation._id ? 'Claiming...' : 'Claim Donation'}
+                          </button>
+                          <button 
+                            onClick={() => handleIgnore(donation._id)}
+                            className="whitespace-nowrap bg-red-50 text-red-600 border border-red-100 px-8 py-3 rounded-2xl font-black hover:bg-red-100 transition-all text-xs uppercase tracking-widest"
+                          >
+                            Don't want to claim this
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          onClick={() => handleUnclaim(donation._id)}
+                          className="whitespace-nowrap bg-red-50 text-red-600 border border-red-100 px-8 py-3 rounded-2xl font-black hover:bg-red-100 transition-all text-xs uppercase tracking-widest"
+                        >
+                          Don't want to claim this
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })
             )}
           </div>
 
@@ -705,20 +793,25 @@ export default function NGODashboard() {
                 myClaims.map((claim: any) => (
                   <div key={claim._id} className="bg-green-50/50 border border-green-100 rounded-3xl p-6 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-6 flex-1 text-left">
-                       {claim.items.some((it: any) => it.imageUrl) ? (
-                         <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white border border-green-100 shrink-0 shadow-sm">
-                            <img 
-                              src={claim.items.find((it: any) => it.imageUrl)?.imageUrl} 
-                              alt="Claim Preview" 
-                              className="w-full h-full object-cover"
-                              onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
-                            />
-                         </div>
-                       ) : (
-                         <div className="w-20 h-20 rounded-2xl bg-white border border-dashed border-green-200 shrink-0 flex items-center justify-center text-green-300">
-                            <ImageIcon size={24} />
-                         </div>
-                       )}
+                       <div className="relative group/img-fix">
+                         {claim.items.some((it: any) => it.imageUrl) ? (
+                           <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white border border-green-100 shrink-0 shadow-sm">
+                              <img 
+                                src={`${claim.items.find((it: any) => it.imageUrl).imageUrl}?t=${Date.now()}`} 
+                                alt="Claim Preview" 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                   (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(claim.items[0]?.name || 'P')}&background=random&size=64`;
+                                }}
+                              />
+                           </div>
+                         ) : (
+                           <div className="w-20 h-20 rounded-2xl bg-white border border-dashed border-green-200 shrink-0 flex items-center justify-center text-green-300">
+                              <ImageIcon size={24} />
+                           </div>
+                         )}
+                       </div>
                        <div>
                          <div className="flex items-center gap-2 mb-2">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${claim.status === 'Distributed' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'}`}>

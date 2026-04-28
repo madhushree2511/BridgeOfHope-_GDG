@@ -45,6 +45,12 @@ const userSchema = new mongoose.Schema({
   contactNumber: {
     type: String,
   },
+  ignoredDonations: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Donation',
+    }
+  ],
   uploadedDocuments: [
     {
       name: String,

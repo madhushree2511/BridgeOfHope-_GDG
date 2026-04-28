@@ -1,7 +1,14 @@
 import express from 'express';
 import multer from 'multer';
 import { User } from '../models/User.ts';
-import { verifyToken, AuthRequest, getAuth } from '../middleware/auth.ts';
+import { verifyToken, getAuth } from '../middleware/auth.ts';
+import admin from 'firebase-admin';
+import type { Request } from 'express';
+
+interface AuthRequest extends Request {
+  user?: admin.auth.DecodedIdToken;
+}
+
 import mongoose from 'mongoose';
 import { ADMIN_WHITELIST } from '../constants.ts';
 
@@ -21,26 +28,37 @@ const dbCheck = (req: express.Request, res: express.Response, next: express.Next
 
 router.use(dbCheck);
 
-// Multer Setup - Using disk storage for viewable files
-import fs from 'fs';
-import path from 'path';
-const LICENSE_DIR = 'uploads/licenses';
-const PRODUCT_DIR = 'uploads/products';
+// Multer Setup - Using Cloudinary
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
-[LICENSE_DIR, PRODUCT_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dest = file.fieldname === 'license' ? LICENSE_DIR : PRODUCT_DIR;
-    cb(null, dest);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+// Verify cloudinary config
+console.log('[Cloudinary] Checking environment variables...');
+console.log('[Cloudinary] Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME || 'MISSING');
+console.log('[Cloudinary] API Key:', process.env.CLOUDINARY_API_KEY ? 'Present' : 'MISSING');
+console.log('[Cloudinary] API Secret:', process.env.CLOUDINARY_API_SECRET ? 'Present' : 'MISSING');
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req: any, file: any) => {
+    const isLicense = file.fieldname === 'license';
+    const isProfile = file.fieldname === 'profileImage' || file.fieldname === 'shopImage';
+    
+    let folder = 'bridge_of_hope/products';
+    if (isLicense) folder = 'bridge_of_hope/licenses';
+    if (isProfile) folder = 'bridge_of_hope/profiles';
+
+    return {
+      folder: folder,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
+      public_id: `${file.fieldname}-${req.user?.uid || 'anon'}-${Date.now()}`
+    };
   }
 });
 
@@ -48,6 +66,20 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
+
+// Helper for single field uploads
+const handleUpload = (fieldName: string) => {
+  return (req: any, res: any, next: any) => {
+    upload.single(fieldName)(req, res, (err: any) => {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      } else if (err) {
+        return res.status(500).json({ error: 'Storage provider error', details: err.message });
+      }
+      next();
+    });
+  };
+};
 
 // POST /api/users/register
 router.post('/register', verifyToken, async (req: AuthRequest, res) => {
@@ -96,10 +128,12 @@ router.post('/register', verifyToken, async (req: AuthRequest, res) => {
 });
 
 // POST /api/users/submit-verification - Real file selection + Profile details
-router.post('/submit-verification', verifyToken, upload.fields([
-  { name: 'license', maxCount: 1 },
-  { name: 'profileImage', maxCount: 1 }
-]), async (req: AuthRequest, res: any) => {
+router.post('/submit-verification', verifyToken, (req, res, next) => {
+  upload.fields([{ name: 'license', maxCount: 1 }, { name: 'profileImage', maxCount: 1 }])(req, res, (err: any) => {
+    if (err) return res.status(err instanceof multer.MulterError ? 400 : 500).json({ error: err.message });
+    next();
+  });
+}, async (req: AuthRequest, res: any) => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const licenseFile = files?.['license']?.[0];
@@ -127,7 +161,7 @@ router.post('/submit-verification', verifyToken, upload.fields([
       }
     }
 
-    const licenseUrl = `/api/users/documents/licenses/${licenseFile.filename}`;
+    const licenseUrl = licenseFile.path;
     
     user.verificationStatus = 'Pending';
     user.isVerified = false;
@@ -138,7 +172,7 @@ router.post('/submit-verification', verifyToken, upload.fields([
         location,
         pincode,
         contactNumber,
-        shopImageUrl: profileImageFile ? `/api/users/documents/products/${profileImageFile.filename}` : user.donorDetails?.shopImageUrl
+        shopImageUrl: profileImageFile ? profileImageFile.path : user.donorDetails?.shopImageUrl
       };
     } else {
       user.ngoDetails = {
@@ -147,7 +181,7 @@ router.post('/submit-verification', verifyToken, upload.fields([
         city,
         pincode,
         contactNumber,
-        profileImageUrl: profileImageFile ? `/api/users/documents/products/${profileImageFile.filename}` : user.ngoDetails?.profileImageUrl
+        profileImageUrl: profileImageFile ? profileImageFile.path : user.ngoDetails?.profileImageUrl
       };
     }
 
@@ -171,25 +205,53 @@ router.post('/submit-verification', verifyToken, upload.fields([
 });
 
 // POST /api/users/upload-product-image
-router.post('/upload-product-image', verifyToken, (req, res, next) => {
-  console.log('[ProductImageUpload] Initializing multer for field "image"');
-  next();
-}, upload.single('image'), async (req: AuthRequest, res) => {
+router.post('/upload-product-image', verifyToken, handleUpload('image'), async (req: AuthRequest, res) => {
   try {
     const file = req.file;
     if (!file) {
-      console.warn('[ProductImageUpload] No file received');
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: 'No file received' });
     }
-
-    console.log(`[ProductImageUpload] Received file: ${file.filename} (${file.size} bytes)`);
-    const fileUrl = `/api/users/documents/products/${file.filename}`;
-    res.json({ url: fileUrl });
+    console.log(`[ProductImageUpload] Cloud URL: ${file.path}`);
+    res.json({ url: file.path });
   } catch (error: any) {
-    console.error('[ProductImageUpload] Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to upload image' });
+    res.status(500).json({ error: error.message || 'Failed to process uploaded image' });
   }
 });
+
+// PATCH /api/users/update-profile-image
+router.post('/update-profile-image', verifyToken, handleUpload('profileImage'), async (req: AuthRequest, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'No image uploaded' });
+    }
+
+    const user = await User.findOne({ firebaseUid: req.user!.uid });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.role === 'Donor') {
+      if (!user.donorDetails) user.donorDetails = { shopName: '', location: '', pincode: '', contactNumber: '', shopImageUrl: '' };
+      user.donorDetails.shopImageUrl = file.path;
+      user.markModified('donorDetails');
+    } else {
+      if (!user.ngoDetails) user.ngoDetails = { officialName: '', location: '', city: '', pincode: '', contactNumber: '', profileImageUrl: '' };
+      user.ngoDetails.profileImageUrl = file.path;
+      user.markModified('ngoDetails');
+    }
+
+    await user.save();
+    console.log(`[ProfileImageUpdate] Updated for ${user.email} -> ${file.path}`);
+    res.json({ message: 'Profile image updated successfully', url: file.path, user });
+  } catch (error: any) {
+    console.error('[ProfileImageUpdate] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update profile image' });
+  }
+});
+
+import fs from 'fs';
+import path from 'path';
 
 // Public route for product images (to support <img> tags which don't send auth headers)
 router.get('/documents/products/:filename', async (req, res) => {
@@ -210,7 +272,7 @@ router.get('/documents/products/:filename', async (req, res) => {
 });
 
 // Route to serve protected license documents
-router.get('/documents/licenses/:filename', verifyToken, async (req: AuthRequest, res) => {
+router.get('/documents/licenses/:filename', verifyToken, async (req: AuthRequest, res: any) => {
   try {
     const { filename } = req.params;
     console.log(`[FileAccess] Request for license: ${filename} from UID: ${req.user?.uid}`);

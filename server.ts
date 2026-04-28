@@ -1,15 +1,16 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import dotenv from 'dotenv';
 import userRoutes from './src/routes/userRoutes.ts';
 import donationRoutes from './src/routes/donationRoutes.ts';
 import ngoRoutes from './src/routes/ngoRoutes.ts';
 
-dotenv.config();
 console.log('Environment variables loaded. MONGODB_URI exists:', !!process.env.MONGODB_URI);
 
 const __filename = fileURLToPath(import.meta.url);
