@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext.tsx';
 import { motion } from 'motion/react';
-import { Package, ClipboardList, CheckSquare, TrendingUp, Star, Trash2, Upload, Clock, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { Package, ClipboardList, CheckSquare, TrendingUp, Star, Trash2, Upload, Clock, ShieldCheck, Image as ImageIcon, Sparkles, Brain } from 'lucide-react';
 import MapboxMap from './MapboxMap.tsx';
+import { runMatchmaking, MatchResult } from '../lib/gemini.ts';
 
 export default function NGODashboard() {
   const { getIdToken, registeredUser, refreshProfile, setRegisteredUser, logout } = useAuth();
@@ -19,6 +20,8 @@ export default function NGODashboard() {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [postingRequirement, setPostingRequirement] = useState(false);
+  const [matchResults, setMatchResults] = useState<Record<string, MatchResult[]>>({});
+  const [matchingStatus, setMatchingStatus] = useState<Record<string, boolean>>({});
 
   const [uploading, setUploading] = useState(false);
   const [uploadingUsage, setUploadingUsage] = useState(false);
@@ -210,7 +213,7 @@ export default function NGODashboard() {
     try {
       setPostingRequirement(true);
       const token = await getIdToken();
-      await axios.post('/api/ngo/requirements', reqForm, {
+      const res = await axios.post('/api/ngo/requirements', reqForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setShowRequirementForm(false);
@@ -218,11 +221,33 @@ export default function NGODashboard() {
       // Refresh
       fetchData();
       alert('Requirement posted successfully!');
+      
+      // Trigger Matchmaking
+      if (res.data) {
+        performMatchmaking(res.data);
+      }
     } catch (err: any) {
       console.error('Post requirement failed:', err);
       alert(err.response?.data?.error || 'Failed to post requirement');
     } finally {
       setPostingRequirement(false);
+    }
+  };
+
+  const performMatchmaking = async (req: any) => {
+    const reqId = req._id;
+    if (matchingStatus[reqId]) return;
+
+    setMatchingStatus(prev => ({ ...prev, [reqId]: true }));
+    try {
+      const results = await runMatchmaking(req, availableDonations);
+      if (results.length > 0) {
+        setMatchResults(prev => ({ ...prev, [reqId]: results }));
+      }
+    } catch (err) {
+      console.error('AI Matchmaking failed:', err);
+    } finally {
+      setMatchingStatus(prev => ({ ...prev, [reqId]: false }));
     }
   };
 
@@ -965,30 +990,79 @@ export default function NGODashboard() {
           {/* List of active needs posted by this NGO */}
           {myRequirements.length > 0 && (
             <div className="bg-white border-2 border-gray-50 rounded-[2.5rem] p-8 shadow-sm">
-               <h3 className="text-lg font-black mb-4">Your Active Requirements</h3>
-               <div className="space-y-3">
+               <h3 className="text-lg font-black mb-4 flex items-center gap-2">
+                 Your Active Requirements
+               </h3>
+               <div className="space-y-4">
                   {myRequirements.map((req: any) => (
-                    <div key={req._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 transition-all hover:bg-gray-100">
-                       <span className="font-bold text-sm">{req.title}</span>
-                       <div className="flex items-center gap-3">
-                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${req.urgency === 'High' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{req.urgency}</span>
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteRequirement(req._id);
-                            }}
-                            disabled={deletingId === req._id}
-                            className="p-3 text-gray-400 hover:text-white hover:bg-red-500 rounded-2xl transition-all disabled:opacity-50 relative z-10 flex items-center justify-center"
-                            title="Delete Requirement"
-                          >
-                            {deletingId === req._id ? (
-                              <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Trash2 size={20} />
-                            )}
-                          </button>
-                       </div>
+                    <div key={req._id} className="p-4 bg-gray-50 rounded-[2rem] border border-gray-100 flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-sm text-gray-800">{req.title}</span>
+                        <div className="flex items-center gap-2">
+                           <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${req.urgency === 'High' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>{req.urgency}</span>
+                        </div>
+                      </div>
+
+                      {/* AI Matches Section */}
+                      {(matchResults[req._id] || matchingStatus[req._id]) && (
+                        <div className="pt-4 border-t border-blue-50">
+                          <div className="flex items-center gap-2 mb-3">
+                             <Sparkles size={14} className="text-blue-600 animate-pulse" />
+                             <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">AI Suggested Matches</span>
+                          </div>
+                          
+                          {matchingStatus[req._id] ? (
+                            <div className="flex items-center gap-3 p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50 animate-pulse">
+                               <Brain size={16} className="text-blue-400" />
+                               <span className="text-xs font-medium text-blue-600 italic">Finding matches in BridgeOfHope...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                               {matchResults[req._id].map((match, idx) => {
+                                 const donation = availableDonations.find(d => d._id === match.donationId);
+                                 if (!donation) return null;
+                                 return (
+                                   <div key={idx} className="flex items-center justify-between p-3 bg-white border border-blue-50 rounded-2xl group/match hover:border-blue-200 transition-all shadow-sm">
+                                      <div className="flex items-center gap-3">
+                                         <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 font-black text-xs">
+                                            {Math.round(match.matchScore * 100)}%
+                                         </div>
+                                         <div className="text-left">
+                                            <p className="text-xs font-black text-gray-800">Donation #{donation._id.slice(-6)}</p>
+                                            <p className="text-[10px] text-gray-500 font-medium">{match.reason}</p>
+                                         </div>
+                                      </div>
+                                      <button 
+                                        onClick={() => claimDonation(donation._id)}
+                                        className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-lg shadow-blue-100 opacity-0 group-hover/match:opacity-100 transition-all transform translate-x-2 group-hover/match:translate-x-0"
+                                      >
+                                        Quick Claim
+                                      </button>
+                                   </div>
+                                 );
+                               })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => performMatchmaking(req)}
+                          disabled={matchingStatus[req._id]}
+                          className="flex-1 bg-white border-2 border-blue-50 text-blue-600 py-3 rounded-2xl text-[10px] font-black hover:bg-blue-50 transition-all flex items-center justify-center gap-2 group/ai"
+                        >
+                          <Sparkles size={14} className="group-hover/ai:rotate-12 transition-transform" />
+                          {matchingStatus[req._id] ? 'Matching...' : 'Run AI Matchmaker'}
+                        </button>
+                        <button 
+                          onClick={() => deleteRequirement(req._id)}
+                          disabled={deletingId === req._id}
+                          className="p-3 border-2 border-red-50 text-red-500 rounded-2xl hover:bg-red-50 transition-all flex items-center justify-center"
+                        >
+                          {deletingId === req._id ? <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /> : <Trash2 size={18} />}
+                        </button>
+                      </div>
                     </div>
                   ))}
                </div>

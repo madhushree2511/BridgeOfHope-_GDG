@@ -3,8 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext.tsx';
 import { 
   PieChart, Pie, Cell, 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { ShieldAlert, Users, TrendingUp, Check, X, FileText, Loader2, Trash2, Search, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -243,9 +242,9 @@ const approveUser = async (userId: string, action: 'Approved' | 'Rejected') => {
       </header>
 
       {/* Analytics Engine */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+      <div className="flex justify-center">
         {/* Resource Distribution */}
-        <div className="bg-white border-2 border-gray-50 p-10 rounded-[3rem] shadow-xl shadow-gray-50">
+        <div className="bg-white border-2 border-gray-50 p-10 rounded-[3rem] shadow-xl shadow-gray-50 w-full max-w-2xl">
            <h3 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-3">
               <ShieldAlert className="text-blue-600" /> Resource Distribution
            </h3>
@@ -272,42 +271,6 @@ const approveUser = async (userId: string, action: 'Approved' | 'Rejected') => {
                 />
                 <Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
-           </div>
-        </div>
-
-        {/* Human Reach */}
-        <div className="bg-white border-2 border-gray-50 p-10 rounded-[3rem] shadow-xl shadow-gray-50">
-           <h3 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-3">
-              <TrendingUp className="text-green-600" /> Human Reach (Timeline)
-           </h3>
-           <div className="h-80 text-left">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={analytics?.humanReach || []}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 'bold', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 'bold', fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '20px' }} />
-                <Line type="monotone" dataKey="helped" stroke="#10b981" strokeWidth={5} dot={{ r: 6, fill: '#10b981', strokeWidth: 0 }} activeDot={{ r: 8 }} />
-              </LineChart>
-            </ResponsiveContainer>
-           </div>
-        </div>
-
-        {/* Utilization Rate */}
-        <div className="bg-white border-2 border-gray-50 p-10 rounded-[3rem] shadow-xl shadow-gray-50 lg:col-span-2">
-           <h3 className="text-2xl font-black mb-8 tracking-tight flex items-center gap-3">
-              <Check size={28} className="text-purple-600" /> Utilization Rate (%)
-           </h3>
-           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analytics?.categoryUtilization || []}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontWeight: 'bold' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 'bold' }} domain={[0, 100]} />
-                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '20px' }} />
-                <Bar dataKey="rate" fill="#8b5cf6" radius={[10, 10, 0, 0]} barSize={60} />
-              </BarChart>
             </ResponsiveContainer>
            </div>
         </div>
