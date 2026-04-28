@@ -66,11 +66,35 @@ export default function Landing() {
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-blue-100 w-full aspect-square rounded-[40px] overflow-hidden relative"
+            className="w-full aspect-square rounded-[40px] overflow-hidden relative shadow-2xl border-8 border-white group"
           >
-             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-purple-600/20" />
-             <div className="absolute inset-0 flex items-center justify-center">
-                <Heart size={120} className="text-white drop-shadow-2xl opacity-50" />
+             <img 
+               src="/hero.png" 
+               alt="Bridge of Hope Community" 
+               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+               referrerPolicy="no-referrer"
+               onError={(e) => {
+                 (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?q=80&w=2070&auto=format&fit=crop";
+               }}
+             />
+             <div className="absolute inset-0 bg-gradient-to-t from-blue-900/60 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
+             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="relative">
+                   <div className="absolute inset-0 blur-2xl bg-white/20 rounded-full scale-150" />
+                   <Heart size={140} className="text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.8)] opacity-90 relative z-10 scale-90 group-hover:scale-100 transition-transform duration-500" />
+                </div>
+             </div>
+             
+             <div className="absolute bottom-8 left-8 right-8">
+                <div className="bg-white/10 backdrop-blur-md p-6 rounded-[2rem] border border-white/20 shadow-2xl translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
+                   <div className="flex items-center gap-3 mb-2">
+                      <div className="bg-blue-600 p-2 rounded-lg">
+                         <Heart className="text-white fill-white" size={16} />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-[0.2em] text-white">Trust Ecosystem</span>
+                   </div>
+                   <p className="text-lg font-black text-white leading-tight">Empowering {user ? 'Your' : 'Local'} Communities Through Transparency.</p>
+                </div>
              </div>
           </motion.div>
         </div>
