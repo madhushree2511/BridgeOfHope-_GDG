@@ -115,16 +115,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Trust Algorithm Section */}
-      <section className="w-full py-24 px-6 max-w-4xl mx-auto text-center">
-        <h2 className="text-3xl font-bold mb-8 italic">The Trust Factor</h2>
-        <div className="bg-white border-2 border-blue-50 rounded-3xl p-12 shadow-sm">
-          <p className="text-lg text-gray-600 mb-8"> Our proprietary trust score ensures that only high-quality NGOs receive support.</p>
-          <div className="bg-gray-900 text-white py-6 px-10 rounded-2xl inline-block text-2xl font-mono">
-            $$TrustScore = (0.4 \times GoogleRating) + (0.6 \times InternalRating)$$
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
